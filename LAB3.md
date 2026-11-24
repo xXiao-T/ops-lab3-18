@@ -27,20 +27,31 @@
 两次 `-burn` 的输出：
 
 ```text
-<粘贴>
+===== burn 1 =====
+cgroup：/sys/fs/cgroup/system.slice/run-r046fbec3edc4410caadcb3e10a9acb76.scope
+cpu.max：配额 0.50 核，周期 100ms（每个周期最多 50 ms CPU 时间）
+GOMAXPROCS=2，忙线程 1 个，计数 10.0 秒
+实际用核 0.50；周期 100 个，被节流 100 个（100%）；被停共 5.24 秒（按 CPU 累计）
+每个线程每个周期被停：实测 52.4 ms，算术 50.0 ms
+===== burn 2 =====
+cgroup：/sys/fs/cgroup/system.slice/run-r42db3d08b95b46659aa9f3da00b93897.scope
+cpu.max：配额 0.50 核，周期 100ms（每个周期最多 50 ms CPU 时间）
+GOMAXPROCS=2，忙线程 2 个，计数 10.0 秒
+实际用核 0.50；周期 100 个，被节流 100 个（100%）；被停共 14.91 秒（按 CPU 累计）
+每个线程每个周期被停：实测 74.6 ms，算术 75.0 ms
 ```
 
 | 线程数 | 周期数 | 被节流的周期 | 实际用核 | 每线程每周期被停（实测） | 算术 |
 |---|---|---|---|---|---|
-| 1 | <填写> | <填写> | <填写> | <填写> | <填写> |
-| 2 | <填写> | <填写> | <填写> | <填写> | <填写> |
+| 1 | 100 | 100 | 0.50 | 52.4 ms | 50.0 ms |
+| 2 | 100 | 100 | 0.50 | 74.6 ms | 75.0 ms |
 
 ### 2.2 A2 节流与 p99
 
 本组写的节流比例查询（与 `deploy/queries-red.txt` 一致）：
 
 ```text
-throttle_ratio      <填写>
+throttle_ratio      sum(rate(cgroup_cpu_throttled_periods_total{job="enrolld"}[${window}])) / sum(rate(cgroup_cpu_periods_total{job="enrolld"}[${window}]))
 ```
 
 配额 100% 时测得的每请求 CPU：<填写> ms（`runs/<名字>/red.csv` 的 `cpu_ms_per_req`）；据此选定的到达率：<填写> 请求/秒，平均约 <填写> 核。
