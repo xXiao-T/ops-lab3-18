@@ -1,4 +1,4 @@
-# 实验 3 记录：第 <组号> 组
+# 实验 3 记录：第 18 组
 
 评分时依据本文件和 `runs/` 中的原始数据核对。本文件中的每一个数值，都须能在某个 `runs/<名字>/` 的文件中找到：表格用 `scripts/table.sh` 生成或从 `summary.md` 中复制后粘贴，其他数值注明出处（例如“`runs/b2-cpu/summary.md` 缺口表第 1 行”）。不要只贴截图。将 `<填写>` 替换为本组的内容。
 
@@ -8,21 +8,21 @@
 
 | 项 | 内容 |
 |---|---|
-| 小组 | 第 <组号> 组 |
-| 仓库地址 | <https://github.com/…> |
-| 主机 | <云厂商与规格名，例如某云的 2 vCPU 4 GB 通用型> |
-| CPU | <`lscpu` 的 Model name；vCPU 数> |
-| 内存与 swap | <`free -m` 的 total；`swapon --show` 的输出，没有 swap 就写“无”> |
-| 操作系统、内核、systemd | <`/etc/os-release` 的 PRETTY_NAME；`uname -r`；`systemctl --version` 第一行> |
-| cgroup | <`stat -fc %T /sys/fs/cgroup` 的输出；`cat /sys/fs/cgroup/cgroup.controllers` 的输出> |
-| Go、Prometheus、node_exporter | <`go version`；`tools/prometheus --version` 第一行；`tools/node_exporter --version` 第一行> |
-| 分核 | 实例：<如 1>；loadgen、lbd、scaler、Prometheus、node_exporter：<如 0> |
+| 小组 | 第 18 组 |
+| 仓库地址 | <https://github.com/xXiao-T/ops-lab3-18> |
+| 主机 | 华为云 ECS `x1.2u.4g`（2 vCPU / 4 GiB） |
+| CPU | General Purpose Processor（KVM 虚拟）；2 vCPU |
+| 内存与 swap | 3531 MiB；无 swap（`swapon --show` 无输出） |
+| 操作系统、内核、systemd | Ubuntu 24.04.4 LTS；6.8.0-136-generic；systemd 255 (255.4-1ubuntu8.16) |
+| cgroup | `cgroup2fs`；`cpuset cpu io memory hugetlb pids rdma misc` |
+| Go、Prometheus、node_exporter | go1.26.9 linux/amd64；prometheus 3.13.4；node_exporter 1.12.1 |
+| 分核 | 实例：1；loadgen、lbd、scaler、Prometheus、node_exporter：0 |
 
 ## 2. 任务 A：配额，节流与 OOM
 
 ### 2.1 A1 配额算术
 
-预测（测量之前写）：配额 0.5 核、周期 100 ms 时，1 个和 2 个线程跑满，每个线程每个周期运行多久、被停多久？本机上 enrolld 的 GOMAXPROCS 会是几，为什么？<填写>
+预测（测量之前写）：配额 0.5 核、周期 100 ms，意味着 cgroup 每 100 ms 最多给 50 ms CPU。1 个线程跑满时，该线程每个周期运行约 50 ms、被停约 50 ms；2 个线程都跑满时，50 ms 预算在两个线程间分配，每个线程运行约 25 ms、被停约 75 ms（假设 CFS 在同一周期内公平轮转）。本机 2 vCPU、A1 未绑核，`CPUQuota=50%` 折合 0.5 核、向上取整为 1；按 Go 1.25 起的规则取 CPU 核数 2、绑核数 2、限额 1 的最小值，且不小于 2，因此 GOMAXPROCS 预测为 2。
 
 两次 `-burn` 的输出：
 
