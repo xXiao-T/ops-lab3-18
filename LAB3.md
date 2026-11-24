@@ -64,7 +64,7 @@ throttle_ratio      sum(rate(cgroup_cpu_throttled_periods_total{job="enrolld"}[$
 
 ### 2.3 A3 OOM
 
-预测（测量之前写）：`/api/report?mb=8&ms=500` 在到达率 10、20、30 时平均和最多各有几个在途请求？RSS 大约多少？在 `MemoryMax=200M` 下会在哪一个阶段被杀？<填写>
+预测（测量之前写）：`/api/report?mb=8&ms=500` 每个请求保持 500 ms，按 Little's Law 平均在途数为 L = λ × 0.5 s，到达率 10、20、30 时分别为 5、10、15；泊松到达的峰值约为平均的 1.5～2 倍。每请求占 8 MB，平均 RSS 约为 40、80、120 MB 再加约 10～13 MB 基线；GOGC=100 时堆可长到上次回收后存活数据的约 2 倍，峰值 RSS 可能到 80、160、240 MB 量级。`MemoryMax=200M` 下，10 req/s 预计能撑住；20 req/s 已接近或超过上限，最可能在 20 req/s 阶段被杀；30 req/s 必然被杀。若 20 req/s 侥幸未死，则在 30 req/s 阶段被杀。
 
 <粘贴三次实验的表格（`scripts/table.sh runs/<名字> ok_rps error_rate p99_ms inflight_avg report_inflight_max rss_max_mb heap_max_mb mem_current_max_mb mem_limit_mb`）>
 
