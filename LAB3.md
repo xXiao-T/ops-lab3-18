@@ -54,9 +54,9 @@ GOMAXPROCS=2，忙线程 2 个，计数 10.0 秒
 throttle_ratio      sum(rate(cgroup_cpu_throttled_periods_total{job="enrolld"}[${window}])) / sum(rate(cgroup_cpu_periods_total{job="enrolld"}[${window}]))
 ```
 
-配额 100% 时测得的每请求 CPU：<填写> ms（`runs/<名字>/red.csv` 的 `cpu_ms_per_req`）；据此选定的到达率：<填写> 请求/秒，平均约 <填写> 核。
+配额 100% 时测得的每请求 CPU：4.30 ms（`runs/a2-base/red.csv` 的 60 req/s 阶段 `cpu_ms_per_req`；30 req/s 阶段为 4.38 ms）；据此选定的到达率：90 请求/秒，平均约 0.39 核。
 
-预测（配额改为 50% 之前写）：平均用量低于配额，p99 会不会变？节流比例大约多少？<填写>
+预测（配额改为 50% 之前写）：平均用量（约 0.39 核）低于配额（0.50 核），但泊松到达会在 100 ms 周期内形成突发；某个周期内需求超过 50 ms 时，剩余时间会被节流。预测 p99 会变大，节流比例非零但不会接近 100%，大约在 10%～20% 量级；平均吞吐可能不变。
 
 各次实验的数据（`scripts/table.sh runs/<名字> ok_rps p50_ms p99_ms server_p99_ms gomaxprocs cg_limit_cores cg_cpu_cores throttle_ratio throttled_s_per_s`，每次一张表）：
 
