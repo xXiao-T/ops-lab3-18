@@ -60,21 +60,93 @@ throttle_ratio      sum(rate(cgroup_cpu_throttled_periods_total{job="enrolld"}[$
 
 各次实验的数据（`scripts/table.sh runs/<名字> ok_rps p50_ms p99_ms server_p99_ms gomaxprocs cg_limit_cores cg_cpu_cores throttle_ratio throttled_s_per_s`，每次一张表）：
 
-<粘贴表格：100%、50%、改法一、改法二>
+基线 `runs/a2-base`（30/60 req/s）的 `cpu_ms_per_req` 为 4.38/4.30 ms，节流为 0；30/60 阶段的 p99 为 8.46/10.61 ms。
+
+**配额 100%，90 req/s（`runs/a2-q100`）**
+
+| step | target_rps | ok_rps | p50_ms | p99_ms | server_p99_ms | gomaxprocs | cg_limit_cores | cg_cpu_cores | throttle_ratio | throttled_s_per_s |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 90 | 92.3 | 7.03 | 11.00 | 9.96128 | 2 | 1 | 0.399154 | 0 | 0 |
+| 2 | 90 | 87.7 | 7.04 | 11.57 | 9.97063 | 2 | 1 | 0.365931 | 0 | 0 |
+| all | - | 90.0 | 7.04 | 11.31 | - | - | - | - | - | - |
+
+**配额 50%，90 req/s（`runs/a2-q50`）**
+
+| step | target_rps | ok_rps | p50_ms | p99_ms | server_p99_ms | gomaxprocs | cg_limit_cores | cg_cpu_cores | throttle_ratio | throttled_s_per_s |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 90 | 92.3 | 7.08 | 39.41 | 41.8735 | 2 | 0.5 | 0.398377 | 0.228571 | 0.0678643 |
+| 2 | 90 | 87.7 | 7.06 | 37.14 | 34.9063 | 2 | 0.5 | 0.364787 | 0.157143 | 0.0388139 |
+| all | - | 90.0 | 7.07 | 38.54 | - | - | - | - | - | - |
+
+**改法一：配额 70%，90 req/s（`runs/a2-q70`）**
+
+| step | target_rps | ok_rps | p50_ms | p99_ms | server_p99_ms | gomaxprocs | cg_limit_cores | cg_cpu_cores | throttle_ratio | throttled_s_per_s |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 90 | 92.3 | 7.01 | 11.25 | 9.95751 | 2 | 0.7 | 0.399804 | 0.00714286 | 0.000502714 |
+| 2 | 90 | 87.7 | 7.04 | 10.56 | 9.95409 | 2 | 0.7 | 0.367126 | 0 | 0 |
+| all | - | 90.0 | 7.03 | 10.63 | - | - | - | - | - | - |
+
+**改法二：配额 50% + `GOMAXPROCS=1`，90 req/s（`runs/a2-gmp1`）**
+
+| step | target_rps | ok_rps | p50_ms | p99_ms | server_p99_ms | gomaxprocs | cg_limit_cores | cg_cpu_cores | throttle_ratio | throttled_s_per_s |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 90 | 92.3 | 8.46 | 34.13 | 27.6 | 1 | 0.5 | 0.388661 | 0.185714 | 0.0246591 |
+| 2 | 90 | 87.7 | 8.46 | 31.39 | 19.925 | 1 | 0.5 | 0.356608 | 0.1 | 0.0138684 |
+| all | - | 90.0 | 8.46 | 32.95 | - | - | - | - | - | - |
+
+**对照结论：** 100% 与 70% 的 p99 都在 10～12 ms，节流接近 0；50% 时 p99 升到 37～39 ms，节流比例 16%～23%，而平均用量只有 0.36～0.40 核；`GOMAXPROCS=1` 把 p99 降到 31～34 ms，但仍明显高于 100%，且 `sched_wait_p99_ms` 从约 5～8 ms 升到 11～13 ms（`runs/a2-gmp1/red.csv`）。可见瓶颈是每 100 ms 周期的 50 ms 预算，而不是平均用量。注：loadgen 与 enrolld 共用核 0（`run.sh` 警告），loadgen 的 CPU 约 2%，对结论影响有限，但仍应作为单机实验的局限。
 
 ### 2.3 A3 OOM
 
 预测（测量之前写）：`/api/report?mb=8&ms=500` 每个请求保持 500 ms，按 Little's Law 平均在途数为 L = λ × 0.5 s，到达率 10、20、30 时分别为 5、10、15；泊松到达的峰值约为平均的 1.5～2 倍。每请求占 8 MB，平均 RSS 约为 40、80、120 MB 再加约 10～13 MB 基线；GOGC=100 时堆可长到上次回收后存活数据的约 2 倍，峰值 RSS 可能到 80、160、240 MB 量级。`MemoryMax=200M` 下，10 req/s 预计能撑住；20 req/s 已接近或超过上限，最可能在 20 req/s 阶段被杀；30 req/s 必然被杀。若 20 req/s 侥幸未死，则在 30 req/s 阶段被杀。
 
-<粘贴三次实验的表格（`scripts/table.sh runs/<名字> ok_rps error_rate p99_ms inflight_avg report_inflight_max rss_max_mb heap_max_mb mem_current_max_mb mem_limit_mb`）>
+**原始条件：`MemoryMax=200M`、`MemorySwapMax=0`（`runs/a3-oom`）**
+
+| step | target_rps | ok_rps | error_rate | p99_ms | inflight_avg | report_inflight_max | rss_max_mb | heap_max_mb | mem_current_max_mb | mem_limit_mb |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 10 | 9.1 | 0.0000 | 505.48 | 4.73333 | 8 | 137.734 | 113.374 | 132.68 | 200 |
+| 2 | 20 | 1.8 | 0.9091 | 505.62 | - | - | - | - | - | - |
+| all | - | 5.5 | 0.6228 | 505.50 | - | - | - | - | - | - |
+
+阶段 2 的 `red.csv` 为空是因为进程在阶段 2 被杀；`ok_rps=1.8`、`error_rate=0.9091` 来自客户端 `runs/a3-oom/steps.csv`，即 20 req/s 阶段只成功返回了少量请求。
+
+**改法一：按最坏情况定 `MemoryMax=384M`，20 req/s（`runs/a3-fix-limit`）**
+
+| step | target_rps | ok_rps | error_rate | p99_ms | inflight_avg | report_inflight_max | rss_max_mb | heap_max_mb | mem_current_max_mb | mem_limit_mb |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 20 | 18.6 | 0.0000 | 505.85 | 9.33333 | 15 | 298.504 | 273.527 | 293.793 | 384 |
+| 2 | 20 | 21.1 | 0.0000 | 505.82 | 10.2 | 16 | 346.68 | 249.53 | 342.035 | 384 |
+| all | - | 19.9 | 0.0000 | 505.85 | - | - | - | - | - | - |
+
+**改法二：`MemoryMax=200M` + `-report-max 10`，10/20/30 req/s（`runs/a3-fix-reportmax`）**
+
+| step | target_rps | ok_rps | error_rate | p99_ms | inflight_avg | report_inflight_max | rss_max_mb | heap_max_mb | mem_current_max_mb | mem_limit_mb |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 10 | 9.1 | 0.0000 | 505.90 | 4.4 | 7 | 134.629 | 89.336 | 129.547 | 200 |
+| 2 | 20 | 15.4 | 0.2222 | 505.51 | 7.13333 | 10 | 170.109 | 137.397 | 165.035 | 200 |
+| 3 | 30 | 17.9 | 0.4270 | 505.12 | 9.26667 | 10 | 170.254 | 129.414 | 165.215 | 200 |
+| all | - | 14.1 | 0.2948 | 505.54 | - | - | - | - | - | - |
 
 被杀的证据（`systemctl show -p ActiveState,Result,ExecMainStatus lab3-a` 和 `journalctl -u lab3-a` 的相关行，`dmesg` 或 `/var/log/kern.log` 中的 oom-kill 行）：
 
 ```text
-<粘贴>
+$ systemctl show -p ActiveState,Result,ExecMainStatus lab3-a
+Result=oom-kill
+ExecMainStatus=9
+ActiveState=failed
+
+$ journalctl -u lab3-a --no-pager | tail -n 10
+Nov 24 21:34:30 systemd[1]: Started lab3-a.service - /root/lab3/bin/enrolld -addr 127.0.0.1:8081 -data /root/lab3/data/a -work 2000000.
+Nov 24 21:34:54 systemd[1]: lab3-a.service: A process of this unit has been killed by the OOM killer.
+Nov 24 21:34:54 systemd[1]: lab3-a.service: Main process exited, code=killed, status=9/KILL
+Nov 24 21:34:54 systemd[1]: lab3-a.service: Failed with result 'oom-kill'.
+
+$ dmesg | grep -i oom-kill | tail -n 3
+[2183555.787157] enrolld invoked oom-killer: gfp_mask=0xcc0(GFP_KERNEL), order=0, oom_score_adj=0
+[2183555.787301] oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=/,mems_allowed=0,oom_memcg=/system.slice/lab3-a.service,task_memcg=/system.slice/lab3-a.service,task=enrolld,pid=2691692,uid=0
 ```
 
-两种改法：按最坏情况定的 limit 是 <填写>（算式：<填写>）；限制并发时 `-report-max` 取 <填写>（依据：<填写>）。
+两种改法：按最坏情况定的 limit 是 **384 MB**（算式：20 req/s 下按 10 req/s 实测 `report_inflight_max=8` 的 2 倍取 16 个在途，16 × 8 MB × 2（GC）= 256 MB，加基线约 13 MB 得 269 MB，再加约 10% 余量约 296 MB；考虑泊松峰值取整到 384 MB。实测 20 req/s 峰值 `mem_current=342 MB`，未 OOM）。限制并发时 `-report-max` 取 **10**（依据：10 × 8 MB × 2 + 基线约 13 MB = 173 MB < 200 MB；实测峰值 `mem_current=165 MB`，未 OOM，但 20/30 req/s 分别有 22%/43% 的请求因超过并发上限返回 503）。
 
 ## 3. 任务 B：伸缩控制环
 
