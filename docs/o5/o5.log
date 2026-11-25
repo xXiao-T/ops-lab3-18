@@ -1,0 +1,21 @@
+Running as unit: lab3-inst-8101.service; invocation ID: d51d0275bc7b4ab7bbdbc32bc70d2def
+Running as unit: lab3-inst-8102.service; invocation ID: ca77f92da8ff4d628812cd6d161eac53
+Running as unit: lab3-inst-8103.service; invocation ID: ed0df36568554263aa42ab3640c8ce90
+[15:55:21] instances ready after ~63s
+[15:55:24] haproxy ready
+[15:55:24] === c1 start ===
+已记录：kill 127.0.0.1:8102
+Failed to kill unit lab3-inst-8102.service: Failed to send signal SIGKILL to auxiliary processes: Invalid argument
+已记录：pause 127.0.0.1:8103
+已记录：resume 127.0.0.1:8103
+[15:59:24] === c1 done rc=0 ===
+Running as unit: lab3-inst-8101.service; invocation ID: aec975f9d01c47049c3b0612ad6a5fc8
+Running as unit: lab3-inst-8102.service; invocation ID: 1f32fcf6cf8f48f089a6b7f32c128433
+Running as unit: lab3-inst-8103.service; invocation ID: bbe9735e2dfc407a955d3c03083f9c3e
+[16:00:28] instances ready after ~63s
+[16:00:31] haproxy ready
+[16:00:31] === c3 start ===
+已记录：slow 127.0.0.1:8102
+已记录：restore 127.0.0.1:8102
+[16:04:31] === c3 done rc=0 ===
+[16:04:31] O5 DONE
