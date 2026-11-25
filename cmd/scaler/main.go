@@ -57,6 +57,8 @@ type options struct {
 	DownWindow string  `json:"down_window"`
 	Schedule   string  `json:"schedule"`
 	Pull       string  `json:"pull"`
+	NodeSlots  int     `json:"node_slots"`
+	NodeDelay  string  `json:"node_delay"`
 	Quota      int     `json:"quota_percent"`
 	QuotaPer   string  `json:"quota_period"`
 	Memory     string  `json:"memory"`
@@ -73,8 +75,8 @@ type options struct {
 	Admin      string  `json:"admin"`
 	Started    string  `json:"started"`
 
-	sync, downWindow, pull time.Duration
-	schedule               []schedEntry
+	sync, downWindow, pull, nodeDelay time.Duration
+	schedule                          []schedEntry
 }
 
 type schedEntry struct {
@@ -135,6 +137,8 @@ func main() {
 	flag.DurationVar(&o.downWindow, "down-window", 300*time.Second, "缩容稳定窗口（HPA 默认 300 s）")
 	flag.StringVar(&o.Schedule, "schedule", "", "定时表：负载开始后多久把最少实例数调到几，例如 +20s=4,+400s=2")
 	flag.DurationVar(&o.pull, "pull", 20*time.Second, "模拟拉镜像的时间：创建实例后等这么久才启动进程")
+	flag.IntVar(&o.NodeSlots, "node-slots", 0, "模拟节点空位：同时运行的实例超过这个数时，新实例要多等 -node-delay 才启动；0 表示关闭")
+	flag.DurationVar(&o.nodeDelay, "node-delay", 0, "新节点的额外等待时间，例如 240s；仅当 -node-slots 打开时生效")
 	flag.IntVar(&o.Quota, "quota", 25, "每个实例的 CPU 配额（%，100 表示一个核）")
 	flag.StringVar(&o.QuotaPer, "quota-period", "", "配额周期（systemd 的 CPUQuotaPeriodSec，例如 10ms）；空表示内核默认的 100 ms")
 	flag.StringVar(&o.Memory, "memory", "128M", "每个实例的内存上限（MemoryMax）")
@@ -151,6 +155,7 @@ func main() {
 	flag.StringVar(&o.Admin, "admin", "127.0.0.1:8091", "scaler 自己的管理接口")
 	flag.Parse()
 	o.Sync, o.DownWindow, o.Pull = o.sync.String(), o.downWindow.String(), o.pull.String()
+	o.NodeDelay = o.nodeDelay.String()
 	o.Started = time.Now().Format(time.RFC3339)
 	if err := o.check(); err != nil {
 		log.Fatal(err)
@@ -198,6 +203,9 @@ func (o *options) check() error {
 	}
 	if o.Quota < 1 {
 		return errors.New("-quota 至少为 1（%）")
+	}
+	if o.NodeSlots < 0 || o.nodeDelay < 0 {
+		return errors.New("-node-slots 和 -node-delay 不能为负")
 	}
 	sched, err := parseSchedule(o.Schedule)
 	if err != nil {
@@ -518,10 +526,16 @@ func (s *scaler) create(version string, assumeUp bool, why string) *instance {
 		port++
 	}
 	now := time.Now()
+	extra := time.Duration(0)
+	detail := why
+	if s.opt.NodeSlots > 0 && s.activeCount() >= s.opt.NodeSlots {
+		extra = s.opt.nodeDelay
+		detail += fmt.Sprintf("；超过 %d 个空位，新节点等待 %v", s.opt.NodeSlots, extra)
+	}
 	in := &instance{port: port, addr: "127.0.0.1:" + strconv.Itoa(port), unit: fmt.Sprintf("lab3-inst-%d", port),
-		version: version, state: stPulling, created: now, pullUntil: now.Add(s.opt.pull), assumeUp: assumeUp}
+		version: version, state: stPulling, created: now, pullUntil: now.Add(s.opt.pull + extra), assumeUp: assumeUp}
 	s.insts = append(s.insts, in)
-	s.logInst(in, "created", why)
+	s.logInst(in, "created", detail)
 	return in
 }
 
